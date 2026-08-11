@@ -1,7 +1,33 @@
-keys/
-.env
-.venv/
-__pycache__/
-*.pyc
-.pytest_cache/
+# Root .gitignore — repo-wide concerns only.
+# App-specific ignores (venv, pytest cache, keys/, .env) live in app/.gitignore
+# and stay scoped there; this file covers things that can appear anywhere
+# in the repo (any phase folder) or are specific to terraform/ and identity/.
+ 
+# --- OS / editor noise (can appear in any folder) ---
 .DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+ 
+# --- Terraform (used from Phase 2 onward, and again in Phase 6) ---
+# Applies under any phaseN-*/ subfolder inside terraform/, not just phase2-identity.
+terraform/**/.terraform/
+terraform/**/*.tfstate
+terraform/**/*.tfstate.backup
+terraform/**/terraform.tfvars
+terraform/**/.terraform.lock.hcl.bak
+terraform/**/crash.log
+ 
+# --- Identity / Keycloak (Phase 2) ---
+# Keycloak admin bootstrap credentials and any exported realm secrets
+# should never be committed even in a "sample" realm-export.json.
+identity/**/*.env
+identity/**/admin-credentials*
+ 
+# --- General secrets safety net ---
+# Catches stray credential files regardless of which folder they land in,
+# as a backstop on top of each component's own .gitignore.
+*.pem
+*.key
+!**/*.example.*
