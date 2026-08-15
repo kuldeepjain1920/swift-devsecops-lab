@@ -414,3 +414,76 @@ See `phase2-runbook-part2-rbac-abac-saml-scim.md` for full detail once built. Su
 - **Real TLS/HTTPS for Keycloak** — Phase 3 (PKI, certificates & machine identity)
 - **Vault/GSM for secrets** — Phase 4 (currently: Keycloak admin credentials in a personal password manager, `.env` files gitignored)
 - **GCP HTTPS Load Balancer + real domain** — the genuinely production-correct fix for the hostname/issuer split (§4.4), enabling a true single-hostname setup; pending a mentor discussion on approach
+
+---
+
+## Appendix: Git Workflow Reference
+
+A consolidated reference of the git commands actually used across Phase 1 and Phase 2, organized by purpose — useful both as a personal reference and as documentation of the workflow discipline followed throughout this project.
+
+### Repo setup / one-time fixes
+
+```bash
+git init                                    # (accidentally run inside app/ originally — later corrected)
+git remote -v                               # verify remote is correctly configured
+git config list                             # check user, remote, branch tracking config
+```
+
+### Branching
+
+```bash
+git checkout -b phase-1-core-api            # Phase 1 branch
+git checkout -b phase-2-identity-auth       # Phase 2 branch
+git branch -a                               # list all branches (local + remote)
+```
+
+Each phase gets its own branch, kept independent rather than merged into `main` as work progresses. A branch is only opened as a pull request once its *entire* phase is complete — e.g., Phase 2's PR will be opened once Part 2 (RBAC/ABAC/SAML/SCIM) is also done, not after Part 1 alone. This keeps each phase reviewable as one coherent unit rather than a string of partial merges, and gives a natural point to write a complete PR description summarizing the whole phase.
+
+**Note on GitHub's "Create a pull request" prompt:** pushing a new branch always triggers this suggestion — it is not a requirement. A PR only matters when actually merging into another branch; a pushed branch with no PR is a completely normal, intentional state under this workflow.
+
+### Repo restructure (the misplaced `.git` fix)
+
+Early in Phase 1, `git init` had been run inside `app/` instead of the true repo root, making `app/` look like the entire repository. This was corrected mid-Phase-2 setup:
+
+```bash
+mv app/.git .git                            # moved git metadata to the true repo root
+git add -A                                  # staged everything so git could detect renames
+git status                                  # confirmed "renamed:" entries, not delete+add pairs
+git commit -m "restructure: move phase 1 into app/ subfolder, correct repo root"
+git mv app/docs/phase1-runbook.md docs/phase1-runbook.md   # later moved again to root docs/
+```
+
+`git add -A` was necessary here specifically so git's diff algorithm could see both the "deleted" old-path files and the "new" app/-prefixed files together in one operation — that's what allows git to recognize them as renames (clean history) instead of unrelated deletions and additions.
+
+### Everyday staging and committing
+
+```bash
+git status                                  # check what's changed/staged/untracked
+git diff <file>                             # see exact line-level changes before committing
+git add <specific files>                    # staged in logical groups, not one big `git add .`
+git commit -m "..."                         # one commit per logical change
+```
+
+Commits were grouped by logical unit of work rather than by "everything changed today" — e.g., Phase 2's work landed as four separate commits (Terraform infra, Keycloak deployment, FastAPI OIDC integration, documentation), each independently reviewable and revertable.
+
+### Pushing
+
+```bash
+git push                                    # normal push once upstream is tracked
+git push --set-upstream origin phase-2-identity-auth   # required on a branch's FIRST push
+```
+
+A new local branch has no upstream tracking relationship until its first push explicitly sets one (`--set-upstream` / `-u`). Without it, plain `git push` fails or prompts for the remote/branch — this only needs to be done once per branch; every push after that can be a plain `git push`.
+
+### Verification / safety checks
+
+Used before every commit that touched `terraform/` or `identity/`, given the risk of committing state files or secrets:
+
+```bash
+git check-ignore -v <file1> <file2>         # confirm .gitignore actually excludes secrets/state
+cat .gitignore                              # review what's excluded
+git log --oneline -6                        # quick view of recent commit history
+```
+
+**Principle followed throughout:** never assume `.gitignore` is working — explicitly verify with `git check-ignore -v` before staging anything in a directory known to contain sensitive files (Terraform state, `.env` files, private keys). This caught nothing wrong in this project, but the discipline of checking rather than assuming is the actual habit worth carrying forward.
+
