@@ -1,6 +1,6 @@
 import os
 import base64
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from cryptography.hazmat.primitives import serialization
 
 from src.models.message import PaymentMessage, MessageStatus
@@ -9,7 +9,7 @@ from src.api.routing import route_message
 from src.api.audit import log_transition
 from src.crypto.signing import sign_message
 from src.crypto.encryption import encrypt_field
-from src.auth.stub_auth import get_current_user
+from src.auth.oidc import validate_token
 
 router = APIRouter()
 
@@ -28,12 +28,11 @@ _AES_KEY = base64.b64decode(os.environ["AES_KEY"])
 # to demonstrate the flow; real persistence would come in a later phase.
 _MESSAGES: dict[str, PaymentMessage] = {}
 
-
 @router.post("/messages", status_code=201)
-def submit_message(msg: PaymentMessage):
-    # Auth stub call — not enforcing anything real yet, just establishing
-    # the call site that Phase 2 will plug real OIDC/RBAC checks into.
-    _ = get_current_user()
+def submit_message(msg: PaymentMessage, claims: dict = Depends(validate_token)):
+    # Real OIDC token validation — claims now holds the decoded JWT
+    # (username, roles, etc.) from a genuine Keycloak-issued bearer token.
+    # Replaces the Phase 1 stub_auth call site.
 
     # Idempotency check — if this message_id was already submitted,
     # return its current state instead of reprocessing it. Mirrors
@@ -86,3 +85,17 @@ def get_message(message_id: str):
     if message_id not in _MESSAGES:
         raise HTTPException(status_code=404, detail="message not found")
     return _MESSAGES[message_id]
+
+# --- OIDC test endpoint (Phase 2) ---
+@router.get("/whoami")
+def whoami(claims: dict = Depends(validate_token)):
+    """
+    Returns the decoded token claims if the request carries a valid
+    Keycloak-issued bearer token. 401s automatically via validate_token
+    if the token is missing, invalid, or expired.
+    """
+    return {
+        "username": claims.get("preferred_username"),
+        "roles": claims.get("realm_access", {}).get("roles", []),
+        "issuer": claims.get("iss"),
+    }
