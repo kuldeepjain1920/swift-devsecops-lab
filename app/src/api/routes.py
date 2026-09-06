@@ -1,6 +1,6 @@
 import os
 import base64
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, status
 from cryptography.hazmat.primitives import serialization
 
 from src.models.message import PaymentMessage, MessageStatus
@@ -9,8 +9,7 @@ from src.api.routing import route_message
 from src.api.audit import log_transition
 from src.crypto.signing import sign_message
 from src.crypto.encryption import encrypt_field
-from src.auth.oidc import validate_token
-from src.auth.oidc import require_role
+from src.auth.oidc import validate_token, require_role, get_roles, check_opa_authorization
 
 router = APIRouter()
 
@@ -30,11 +29,25 @@ _AES_KEY = base64.b64decode(os.environ["AES_KEY"])
 _MESSAGES: dict[str, PaymentMessage] = {}
 
 @router.post("/messages", status_code=201)
-def submit_message(msg: PaymentMessage, claims: dict = Depends(require_role("payment-initiator"))):
+async def submit_message(msg: PaymentMessage, claims: dict = Depends(require_role("payment-initiator"))):
     # Real OIDC token validation — claims now holds the decoded JWT
     # (username, roles, etc.) from a genuine Keycloak-issued bearer token.
     # Replaces the Phase 1 stub_auth call site.
     # RBAC: only payment-initiator role may submit a new payment message.
+    # RBAC (require_role) already confirmed payment-initiator role is present.
+    # ABAC now checks whether THIS SPECIFIC request (based on its amount) is
+    # allowed given the caller's full role set — not just the one role RBAC required.
+    user_roles = get_roles(claims)
+    allowed = await check_opa_authorization(
+        action="submit",
+        roles=user_roles,
+        amount=float(msg.amount),  # msg.amount is a Decimal; OPA/JSON needs a plain number
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"OPA policy denied: amount {msg.amount} requires payment-approver role for amounts over threshold",
+        )
 
     # Idempotency check — if this message_id was already submitted,
     # return its current state instead of reprocessing it. Mirrors

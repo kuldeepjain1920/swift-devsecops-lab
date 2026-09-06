@@ -125,3 +125,35 @@ def require_role(*allowed_roles: str):
         return payload  # pass the payload through, in case the route wants it too
 
     return role_checker
+
+# --- ABAC: attribute-based authorization via OPA ---
+
+OPA_URL = os.environ.get("OPA_URL", "http://opa:8181")  # container-name resolution via swift-lab-net
+
+async def check_opa_authorization(action: str, roles: list[str], amount: float) -> bool:
+    """
+    Queries OPA's REST API for an authorization decision, rather than
+    encoding the amount-threshold logic directly in Python. This is the
+    core ABAC pattern: the decision LOGIC lives in Rego (policy-as-code),
+    the app just supplies the relevant attributes (action, roles, amount)
+    and asks "is this allowed?"
+    """
+
+    opa_input = {
+        "input": {
+            "action": action,
+            "roles": roles,
+            "amount": amount,
+        }
+    }
+
+    async with httpx.AsyncClient() as client:
+        # OPA's data API path mirrors the Rego package name:
+        # package payment.authz -> /v1/data/payment/authz
+        response = await client.post(f"{OPA_URL}/v1/data/payment/authz", json=opa_input, timeout=5.0)
+        response.raise_for_status()
+        result = response.json()
+
+    # OPA wraps every result in {"result": {...}}. If "allow" is missing
+    # entirely (e.g. a malformed policy), default to False — fail closed.
+    return result.get("result", {}).get("allow", False)
