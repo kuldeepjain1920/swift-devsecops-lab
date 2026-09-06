@@ -10,6 +10,7 @@ from src.api.audit import log_transition
 from src.crypto.signing import sign_message
 from src.crypto.encryption import encrypt_field
 from src.auth.oidc import validate_token
+from src.auth.oidc import require_role
 
 router = APIRouter()
 
@@ -29,10 +30,11 @@ _AES_KEY = base64.b64decode(os.environ["AES_KEY"])
 _MESSAGES: dict[str, PaymentMessage] = {}
 
 @router.post("/messages", status_code=201)
-def submit_message(msg: PaymentMessage, claims: dict = Depends(validate_token)):
+def submit_message(msg: PaymentMessage, claims: dict = Depends(require_role("payment-initiator"))):
     # Real OIDC token validation — claims now holds the decoded JWT
     # (username, roles, etc.) from a genuine Keycloak-issued bearer token.
     # Replaces the Phase 1 stub_auth call site.
+    # RBAC: only payment-initiator role may submit a new payment message.
 
     # Idempotency check — if this message_id was already submitted,
     # return its current state instead of reprocessing it. Mirrors

@@ -87,3 +87,41 @@ def validate_token(credentials: HTTPAuthorizationCredentials = Depends(security)
         )
 
     return claims
+
+
+# --- RBAC: role-based authorization, built on top of the already-validated token ---
+def get_roles(payload: dict) -> list[str]:
+    """
+    Extract realm roles from a decoded Keycloak token.
+    Keycloak puts realm-level roles (the ones you created: payment-initiator,
+    payment-approver, payment-auditor) under realm_access.roles.
+    Client-specific roles would instead live under resource_access.<client_id>.roles —
+    not used here since we created these as realm roles.
+    """
+    realm_access = payload.get("realm_access", {})  # {} if claim missing, avoids KeyError
+    return realm_access.get("roles", [])
+
+
+def require_role(*allowed_roles: str):
+    """
+    Dependency FACTORY — not a dependency itself.
+    Call it with the roles you want to allow, e.g. Depends(require_role("payment-approver")),
+    and it returns a dependency function FastAPI can actually inject.
+
+    Why a factory: FastAPI's Depends() needs a callable with no *required* custom args at
+    call time, so we bind the allowed_roles via closure instead of passing them at request time.
+    """
+    def role_checker(payload: dict = Depends(validate_token)) -> dict:
+        # validate_token already ran signature/issuer/audience checks — this
+        # only adds the authorization layer on top of that authenticated identity.
+        user_roles = get_roles(payload)
+
+        # any() short-circuits — fine for our small role sets
+        if not any(role in user_roles for role in allowed_roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires one of roles: {allowed_roles}. Token has: {user_roles}",
+            )
+        return payload  # pass the payload through, in case the route wants it too
+
+    return role_checker
