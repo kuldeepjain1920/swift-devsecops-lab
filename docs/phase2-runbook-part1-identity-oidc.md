@@ -2,7 +2,7 @@
 
 **Status:** Complete and verified end-to-end
 **Covers:** VPC/Terraform infrastructure, Keycloak deployment and configuration, FastAPI OIDC integration
-**Not covered here:** RBAC, ABAC, SAML, SCIM — see `phase2-runbook-part2-rbac-abac-saml-scim.md`
+**Not covered here:** RBAC, ABAC, SAML, SCIM — completed 9/8/2026, see `phase2-runbook-part2-rbac-abac-saml-scim.md`
 
 ---
 
