@@ -137,3 +137,9 @@ Since the repo is public, even metadata (what secrets exist, where they're store
 While confirming DB credentials ahead of the pre-SCIM-upgrade backup, `docker exec keycloak-postgres env | grep POSTGRES` printed the actual password value to the terminal. Low risk (lab-only, internal-only Postgres, never left the VM's own console) but a genuine rotation candidate — tracked in `secure-notes/credentials-index.md`.
 
 **Environment note — `swift-lab-vm` runs Container-Optimized OS (COS).** No `apt-get`/general package manager by design (container-only image) — host-level tools like `tree` aren't installable; use `find`, or run a tool inside a throwaway container instead.
+
+---
+
+## `main` branch creation and PR merge
+
+Setting up `main` and merging both phases involved a real GitHub limitation and a worked-around fix — detailed as its own narrative document rather than summarized here: see `docs/main-branch-setup.md`.

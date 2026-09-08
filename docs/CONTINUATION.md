@@ -68,11 +68,10 @@ swift-devsecops-lab/
 │   └── CONTINUATION.md           # this file
 └── secure-notes/                 # gitignored entirely — credentials metadata only, no values
 ```
-
 **Branches:**
 - `phase-1-core-api` — Phase 1 work
 - `phase-2-identity-auth` — Phase 2 Part 1 + Part 2, contains all of Phase 1's history too (branched from it, never diverged)
-- `main` — not yet created as of this writing; see open items below
+- `main` — created and set as the repo's default branch; both phases merged in via separate PRs (see `docs/main-branch-setup.md` for the full process, including a real GitHub limitation hit and worked around along the way)
 
 ---
 
@@ -121,7 +120,6 @@ All four built and verified end-to-end against real tokens/real Keycloak state. 
 
 ## 7. Known open items (not blockers, just open)
 
-- `main` branch not yet created — `phase-2-identity-auth` is ready to merge (contains all of Phase 1 + Phase 2 history cleanly)
 - `POSTGRES_PASSWORD` should be rotated (was printed to a terminal in plaintext once during the SCIM-upgrade backup prep — low risk, lab-only, but a genuine hygiene item)
 - Cross-VM SCIM calls unsupported (SCIM's audience check is tied to Keycloak's own hostname config, with no app-side workaround built yet — not currently needed)
 - `swift-lab-vm`'s ephemeral external IP breaks the SAML client's redirect URI on every VM restart until manually re-checked and updated
