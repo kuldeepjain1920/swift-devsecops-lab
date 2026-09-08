@@ -1,6 +1,7 @@
 import os
 import base64
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
+from fastapi.responses import JSONResponse
 from cryptography.hazmat.primitives import serialization
 
 from src.models.message import PaymentMessage, MessageStatus
@@ -10,6 +11,15 @@ from src.api.audit import log_transition
 from src.crypto.signing import sign_message
 from src.crypto.encryption import encrypt_field
 from src.auth.oidc import validate_token, require_role, get_roles, check_opa_authorization
+
+import xml.etree.ElementTree as ET
+
+# SAML XML uses namespaced tags — these prefixes let ElementTree find
+# elements like <saml:NameID> without spelling out the full URI every time.
+SAML_NS = {
+    "samlp": "urn:oasis:names:tc:SAML:2.0:protocol",
+    "saml": "urn:oasis:names:tc:SAML:2.0:assertion",
+}
 
 router = APIRouter()
 
@@ -114,3 +124,44 @@ def whoami(claims: dict = Depends(validate_token)):
         "roles": claims.get("realm_access", {}).get("roles", []),
         "issuer": claims.get("iss"),
     }
+
+@router.post("/saml/acs")
+async def saml_acs(request: Request):
+    """
+    SAML Assertion Consumer Service (ACS) — receives the SAML Response
+    Keycloak POSTs here after an IdP-initiated login.
+
+    TODO(Phase 3): this does NOT verify the assertion's XML signature against
+    Keycloak's signing certificate — it only decodes and parses the structure
+    to prove the flow works end-to-end. Real verification needs a proper SAML
+    library (python3-saml / signxml) and correct certificate handling, same
+    PKI dependency as the OIDC JWKS verify=True gap already deferred there.
+    """
+    # SAML's HTTP-POST binding sends the response as a regular form field,
+    # not JSON — hence .form() instead of the .json() FastAPI uses elsewhere.
+    form = await request.form()
+    saml_response_b64 = form.get("SAMLResponse")
+    if not saml_response_b64:
+        raise HTTPException(status_code=400, detail="Missing SAMLResponse in POST body")
+
+    # The SAML spec requires base64-encoding the XML for transport in a form field.
+    xml_bytes = base64.b64decode(saml_response_b64)
+    root = ET.fromstring(xml_bytes)
+
+    # NameID is the primary identifier the assertion is about — format
+    # ("username") was set on the Keycloak client's Name ID Format setting.
+    name_id_el = root.find(".//saml:NameID", SAML_NS)
+    name_id = name_id_el.text if name_id_el is not None else None
+
+    # Any extra claims Keycloak included ride along as AttributeStatement entries.
+    attributes = {}
+    for attr in root.findall(".//saml:Attribute", SAML_NS):
+        attr_name = attr.get("Name")
+        values = [v.text for v in attr.findall("saml:AttributeValue", SAML_NS)]
+        attributes[attr_name] = values
+
+    return JSONResponse({
+        "name_id": name_id,
+        "attributes": attributes,
+        "note": "Signature NOT verified — Phase 3 TODO",
+    })
