@@ -31,3 +31,4 @@ identity/**/admin-credentials*
 *.pem
 *.key
 !**/*.example.*
+secure-notes/
