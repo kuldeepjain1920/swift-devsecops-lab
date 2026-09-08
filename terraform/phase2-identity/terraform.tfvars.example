@@ -1,0 +1,10 @@
+# terraform.tfvars.example
+# Copy this to terraform.tfvars and fill in real values.
+# terraform.tfvars should be gitignored — it may contain your real IP/VPN range.
+
+# app_vpc_name confirmed as "default" via `gcloud compute networks list` — no override needed,
+# variables.tf's default already matches.
+
+# Your home/office public IP (or VPN range) in CIDR form, e.g. "203.0.113.42/32".
+# Required — admin console and SSH will be unreachable until this is set.
+admin_source_ip_ranges = ["YOUR_IP_HERE/32"]

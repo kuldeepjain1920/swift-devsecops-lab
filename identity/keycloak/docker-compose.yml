@@ -1,0 +1,71 @@
+# docker-compose.yml
+# Runs Keycloak backed by Postgres on swift-idp-01. Values that shouldn't be
+# hardcoded (admin password, DB password) are pulled from a local .env file —
+# see .env.example for the required keys. .env itself is gitignored.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: keycloak-postgres
+    restart: unless-stopped
+    environment:
+      # Postgres bootstrap credentials — read from .env, never hardcoded here.
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      # Named volume so DB data survives container restarts/recreations,
+      # not just VM restarts.
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - keycloak-net
+    # Not exposing 5432 to the host or the outside world — only Keycloak's
+    # container (on the same internal docker network) can reach Postgres.
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: keycloak
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      # --- Database connection (points at the postgres service above) ---
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+
+      # --- Initial admin bootstrap account (change/rotate after first login) ---
+      # Using KC_BOOTSTRAP_ADMIN_* per Keycloak's current recommendation —
+      # KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD are deprecated and will be removed
+      # in a future Keycloak release.
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+
+      # --- Networking / hostname ---
+      # Using the VM's internal IP since this is reached only from within the
+      # peered VPCs (via IAP for admin, via the app VPC for OIDC/SAML calls).
+      # KC_HOSTNAME: ${KC_HOSTNAME}
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_STRICT: "false" # relaxed for lab use; tighten for production
+      KC_HTTP_ENABLED: "true"     # HTTP allowed on the internal network only —
+                                   # the firewall already restricts who can reach this port
+      KC_PROXY_HEADERS: "xforwarded"
+
+    ports:
+      # 8080 = HTTP (admin console, dev/testing) — reachable only from your
+      #        admin IP per firewall.tf's allow_admin_console rule.
+      # 8443 = HTTPS (OIDC/SAML endpoints) — reachable from your admin IP AND
+      #        from the app VPC per allow_app_vpc_to_keycloak.
+      - "8080:8080"
+      - "8443:8443"
+    command: start-dev # dev mode for now — swap to `start` + real certs before treating this as production-equivalent
+    networks:
+      - keycloak-net
+
+networks:
+  keycloak-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
